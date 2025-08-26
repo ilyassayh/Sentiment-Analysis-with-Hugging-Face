@@ -1,0 +1,24 @@
+!*.py
+!app/
+!app/**
+# venvs
+.venv/
+venv/
+env/
+
+# local gradio cache
+.gradio/
+
+# python caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+

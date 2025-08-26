@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sentiment Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    /* Minimal, clean styles */
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f6f8fa; }
+    .card {
+      max-width: 700px; margin: 0 auto; background: white; padding: 20px;
+      border: 1px solid #e5e7eb; border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+    }
+    h1 { margin-top: 0; }
+    textarea {
+      width: 100%; min-height: 110px; padding: 10px; font-size: 15px;
+      border: 1px solid #d1d5db; border-radius: 8px; outline: none;
+    }
+    .row { display: flex; gap: 8px; margin: 10px 0 0; flex-wrap: wrap; }
+    button {
+      padding: 10px 16px; border: none; border-radius: 8px; cursor: pointer;
+      background: #2563eb; color: white; font-size: 14px;
+    }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .ghost {
+      background: transparent; color: #111827; border: 1px solid #d1d5db;
+    }
+    .label { margin: 18px 0 6px; font-weight: bold; }
+    .summary {
+      padding: 12px; background: #f3f4f6; border: 1px solid #e5e7eb;
+      border-radius: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      word-break: break-word;
+    }
+    .summary.positive { border-color: #86efac; background: #ecfdf5; color: #166534; }
+    .summary.negative { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
+    .summary.error    { border-color: #fca5a5; background: #fee2e2; color: #991b1b; }
+    pre {
+      background: #0b1220; color: #cbd5e1; padding: 12px; border-radius: 8px;
+      overflow-x: auto; border: 1px solid #1f2937;
+    }
+    .links { color: #2563eb; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🧠 Sentiment Analysis</h1>
+    <p>Type text, click <strong>Analyze</strong>. You’ll get a summary line and the raw JSON.</p>
+
+    <!-- Text input -->
+    <textarea id="text" placeholder="e.g., I absolutely love this product!"></textarea>
+
+    <!-- Buttons -->
+    <div class="row">
+      <button id="analyze">Analyze</button>
+      <button id="clear" class="ghost" type="button">Clear</button>
+    </div>
+
+    <!-- Summary line "text-sentiment-confidence" -->
+    <div class="label">Summary</div>
+    <div id="summary" class="summary">—</div>
+
+    <!-- Raw JSON response -->
+    <div class="label">Raw JSON</div>
+    <pre id="out">{}</pre>
+
+    <p style="margin-top:12px;">
+      Docs: <a class="links" href="/docs" target="_blank">/docs</a> —
+      Health: <a class="links" href="/health" target="_blank">/health</a>
+    </p>
+  </div>
+
+  <script>
+    // Grab elements
+    const btn = document.getElementById("analyze");
+    const btnClear = document.getElementById("clear");
+    const txt = document.getElementById("text");
+    const summary = document.getElementById("summary");
+    const out = document.getElementById("out");
+
+    // Helper: set UI while loading
+    function setLoading(loading) {
+      btn.disabled = loading;
+      btn.textContent = loading ? "Analyzing..." : "Analyze";
+    }
+
+    // Helper: color the summary by sentiment
+    function colorBySentiment(sentiment) {
+      summary.className = "summary"; // reset
+      if (sentiment === "positive") summary.classList.add("positive");
+      if (sentiment === "negative") summary.classList.add("negative");
+    }
+
+    // Show an error nicely
+    function showError(message) {
+      summary.textContent = message;
+      summary.className = "summary error";
+    }
+
+    // Call the API
+    async function analyze() {
+      const text = txt.value.trim();
+      if (!text) {
+        showError("Please enter some text.");
+        return;
+      }
+
+      setLoading(true);
+      showError("Loading...");   // temporary message in summary area
+      out.textContent = "{}";    // clear previous JSON
+
+      try {
+        // POST to the API at the same origin
+        const res = await fetch("/predict", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text })
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          // Show API error message if present
+          const msg = data?.detail || data?.error || `HTTP ${res.status}`;
+          showError(msg);
+          return;
+        }
+
+        // Success: the server already returns a "summary" string
+        // in the form: "text-sentiment-confidence"
+        summary.textContent = data.summary;
+        colorBySentiment(data.sentiment);
+        out.textContent = JSON.stringify(data, null, 2);
+
+      } catch (e) {
+        showError("Network error or timeout. Try again.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    // Wire buttons
+    btn.addEventListener("click", analyze);
+    btnClear.addEventListener("click", () => {
+      txt.value = "";
+      summary.textContent = "—";
+      summary.className = "summary";
+      out.textContent = "{}";
+      txt.focus();
+    });
+
+    // Allow Ctrl+Enter to submit
+    txt.addEventListener("keydown", (e) => {
+      if (e.ctrlKey && e.key === "Enter") analyze();
+    });
+  </script>
+</body>
+</html>
