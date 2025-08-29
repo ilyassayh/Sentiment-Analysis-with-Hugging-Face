@@ -1,121 +1,163 @@
-# 🧠 Sentiment Analysis API (FastAPI · Docker · Hugging Face)
+# 🧠 Sentiment Analysis API  
+_FastAPI · Transformers · Postgres · Docker (optional) · Hugging Face Spaces_
 
-Small **microservice** that predicts whether a text is **positive** or **negative**, and returns a **confidence score**.  
-It’s built with **FastAPI**, uses the lightweight **DistilBERT SST-2** model, and includes a **minimal HTML page** and **Swagger** docs.
+Small microservice that predicts if a text is **positive** or **negative** and returns a **confidence score**.  
+Includes a minimal **HTML test page**, **Swagger docs**, **Postgres persistence** (save predictions), **tests**, **benchmarks**, and a **GitHub Actions CI**.
 
-**Live demo (Hugging Face Space):** https://huggingface.co/spaces/iyassayh/sentiment-ia-docker
+**Live Space (Docker SDK):** https://huggingface.co/spaces/iyassayh/sentiment-ia-docker
 
 ---
 
 ## ✨ Features
 
-- `POST /predict` → `{ text, sentiment, confidence, summary }`
-- `GET /health` → quick liveness check
-- `GET /docs` → interactive Swagger UI
-- Minimal front page at `/` to test via browser (`/static/index.html`)
-- Containerized (Docker) and deployable on **Hugging Face Spaces**
-- (Bonus) **Tests** (`pytest`) and **Benchmarks** (CLI + Gradio UI)
+- `POST /predict` → `{ text, sentiment, confidence, summary }`  
+  `summary` is `text-sentiment-confidence`
+- `GET /predictions` → recent rows saved in **Postgres**
+- `GET /health` → liveness
+- `GET /docs` → Swagger
+- Minimal **HTML page** at `/` to try it quickly
+- (Bonus) **Benchmarks** (CLI + Gradio UI)
+- (Bonus) **Pytest** suite + **GitHub Actions** CI
 
 ---
 
 ## 🧰 Tech Stack
 
 - **Python 3.10+**, **FastAPI**, **Uvicorn**
-- **transformers** (Hugging Face), model: `distilbert-base-uncased-finetuned-sst-2-english`
-- **Docker** (port **7860** inside container)
-- Optional: **Gradio** for a simple benchmark UI
+- **Transformers** (HF), model: `distilbert-base-uncased-finetuned-sst-2-english`
+- **PostgreSQL** (local, no Docker required)
+- Optional: **Docker** container for the API (port **7860**)
+- Optional: **Gradio** for a tiny benchmark UI
 
 ---
 
 ## 🗂 Project Structure
 
-neww/
+.
 ├─ app/
 │ ├─ init.py
-│ └─ main.py # FastAPI app (endpoints + model)
+│ ├─ main.py # FastAPI app (endpoints + model + DB save/list)
+│ ├─ database.py # SQLAlchemy engine/session, reads DATABASE_URL
+│ └─ models.py # Prediction model (id, text, sentiment, confidence, created_at)
 ├─ static/
-│ └─ index.html # minimal UI to call /predict
+│ └─ index.html # Minimal UI to call /predict and /predictions
 ├─ tests/
 │ ├─ init.py
 │ └─ test_api.py # health, success, error tests
 ├─ benchmark/
-│ ├─ benchmark.py # CLI benchmark (3 models)
+│ ├─ benchmark.py # CLI mini-benchmark
 │ └─ benchmark_ui_single_table.py # Gradio UI (one table, 3 models)
 ├─ Dockerfile
 ├─ requirements.txt
 ├─ pytest.ini
 └─ .github/
 └─ workflows/
-└─ ci.yml # GitHub Actions: run tests + docker build
+└─ ci.yml # CI: run pytest + build Docker image
 
 yaml
-Copy code
+Copy
+Edit
 
 ---
 
-## 🚀 Quickstart (Local)
+## 🚀 Quickstart (Local, with Postgres)
 
-### 1) Install dependencies
+### 1) Install deps
 ```bash
 pip install -r requirements.txt
-2) Run the API (Uvicorn)
+If your URL uses psycopg v3 (recommended):
+
+text
+Copy
+Edit
+DATABASE_URL=postgresql+psycopg://...
+Make sure psycopg[binary] is in requirements.txt.
+
+If your URL uses psycopg2:
+
+text
+Copy
+Edit
+DATABASE_URL=postgresql+psycopg2://...
+Add psycopg2-binary to requirements.txt.
+
+2) Create a Postgres DB (local)
+Using psql (or pgAdmin GUI):
+
+sql
+Copy
+Edit
+-- You can reuse your postgres superuser OR create a dedicated one
+CREATE USER sentiment_user WITH PASSWORD 'MyStrongPass123!';
+CREATE DATABASE sentiment_db OWNER sentiment_user;
+GRANT ALL PRIVILEGES ON DATABASE sentiment_db TO sentiment_user;
+You already have:
+postgresql+psycopg2://postgres:1234@localhost:5432/sentiment
+That’s fine too—just install psycopg2-binary and use that string.
+
+3) Set the connection string (Windows PowerShell)
+Option A (psycopg v3 driver):
+
+powershell
+Copy
+Edit
+$env:DATABASE_URL = "postgresql+psycopg://postgres:1234@localhost:5432/sentiment"
+Option B (psycopg2 driver):
+
+powershell
+Copy
+Edit
+pip install psycopg2-binary
+$env:DATABASE_URL = "postgresql+psycopg2://postgres:1234@localhost:5432/sentiment"
+4) Run the API
 bash
-Copy code
-# from the project root
+Copy
+Edit
 uvicorn app.main:app --reload --port 7860
-# open http://127.0.0.1:7860
-3) Try it
-Front page: http://127.0.0.1:7860/
+Open:
+
+App (HTML): http://127.0.0.1:7860/
 
 Swagger: http://127.0.0.1:7860/docs
 
-Health: http://127.0.0.1:7860/health
-
-POST /predict (curl)
+Try a request:
 
 bash
-Copy code
+Copy
+Edit
 curl -X POST "http://127.0.0.1:7860/predict" \
   -H "Content-Type: application/json" \
   -d "{\"text\":\"I love this product!\"}"
-POST /predict (PowerShell)
+🐳 Run the API in Docker (optional)
+Local Postgres + API in Docker (API connects to host DB):
 
-powershell
-Copy code
-Invoke-RestMethod -Method Post `
-  -Uri "http://127.0.0.1:7860/predict" `
-  -Body (@{ text = "I love this product!" } | ConvertTo-Json) `
-  -ContentType "application/json"
-🐳 Run with Docker (Local)
 bash
-Copy code
-# 1) build the image
+Copy
+Edit
 docker build -t sentiment-api .
+docker run --rm -p 7860:7860 \
+  -e DATABASE_URL="postgresql+psycopg://postgres:1234@host.docker.internal:5432/sentiment" \
+  sentiment-api
+On Linux, replace host.docker.internal with your host IP (e.g., 172.17.0.1).
 
-# 2) run the container (map 7860 -> 7860)
-docker run --rm -p 7860:7860 sentiment-api
+☁️ Hugging Face Spaces (Docker SDK)
+Create a Space → SDK: Docker → Public
 
-# open http://127.0.0.1:7860/
-☁️ Deploy on Hugging Face Spaces (Docker)
-Create a Space → SDK: Docker → Public.
+Push to Space repo: Dockerfile, requirements.txt, app/, static/
 
-Push these files to the Space root: Dockerfile, requirements.txt, the whole app/ and static/ folders.
+Add Space Secret: DATABASE_URL (use a managed Postgres: Neon, Supabase, etc.)
 
-Important (Spaces cache permissions): this project’s Dockerfile sets HF caches to a writable path:
+Build → Open the App tab
+
+Note (cache permissions in Spaces):
+This Dockerfile should set writable HF caches:
 
 dockerfile
-Copy code
+Copy
+Edit
 ENV HF_HOME=/home/user/.cache/huggingface
 ENV TRANSFORMERS_CACHE=/home/user/.cache/huggingface/transformers
 ENV HUGGINGFACE_HUB_CACHE=/home/user/.cache/huggingface/hub
-Commit → watch Build logs → when ready, open App.
-
-Troubleshooting (Spaces)
-
-If you see PermissionError: /root/.cache/huggingface/token, ensure the ENV cache lines above exist and the Dockerfile creates the directories:
-
-dockerfile
-Copy code
 RUN mkdir -p "$HF_HOME" "$TRANSFORMERS_CACHE" "$HUGGINGFACE_HUB_CACHE" \
     && chmod -R 777 /home/user/.cache
 📘 API Reference
@@ -123,86 +165,92 @@ POST /predict
 Request
 
 json
-Copy code
+Copy
+Edit
 { "text": "I love this!" }
 Response
 
 json
-Copy code
+Copy
+Edit
 {
   "text": "I love this!",
   "sentiment": "positive",
   "confidence": 0.9973,
   "summary": "I love this!-positive-0.9973"
 }
-Errors
-
-Empty/whitespace text → 400 with {"detail": "...must not be empty..."}
-
-JSON validation errors (missing field, too long) → 422 (FastAPI/Pydantic)
+GET /predictions?limit=20
+Returns the most recent saved predictions (from Postgres).
 
 GET /health
 json
-Copy code
+Copy
+Edit
 { "status": "ok" }
 GET /docs
-Interactive docs (Swagger UI).
+Interactive Swagger UI.
 
 🧪 Tests
-Run all tests (uses tests/test_api.py):
+Run all tests:
 
 bash
-Copy code
+Copy
+Edit
 pytest -q
-What’s covered:
+Covers:
 
-/health returns {"status":"ok"}
+/health is OK
 
-/predict success shape & values
+/predict success (shape + values)
 
-/predict errors (whitespace, empty string, missing field, too long)
+/predict errors (empty/whitespace, too long, missing)
 
-🏎️ Benchmarks
-CLI (3 models)
+CI uses SQLite by default if you set DATABASE_URL=sqlite:///./data.db in the workflow (or keep Postgres if you prefer).
+
+🏁 Benchmarks (optional)
+CLI
 bash
-Copy code
+Copy
+Edit
 python benchmark/benchmark.py
-Prints a Markdown summary (avg/min/max/median/p95 latency + simple accuracy) comparing:
+Compares a few SST-2 models and prints a tiny Markdown summary.
+
+Gradio (one table, labels only)
+bash
+Copy
+Edit
+python benchmark/benchmark_ui_single_table.py
+Opens a local UI showing a single table with positive/negative results from 3 models:
 
 distilbert-base-uncased-finetuned-sst-2-english
 
 textattack/distilbert-base-uncased-SST-2
 
-textattack/roberta-base-SST-2 (no sentencepiece needed)
+textattack/roberta-base-SST-2
 
-Gradio UI (one table, only labels)
-bash
-Copy code
-python benchmark/benchmark_ui_single_table.py
-# opens a local UI, shows a single table with POS/NEG from 3 models
 🤖 CI (GitHub Actions)
-A simple workflow at .github/workflows/ci.yml:
+Workflow at .github/workflows/ci.yml:
 
 Caches pip + Hugging Face models
 
-Runs pytest on every push/PR
+Installs deps
+
+Runs pytest
 
 Builds the Docker image (smoke check)
 
-🖼️ Screenshots (add yours)
-/docs Swagger page
+🛠 Troubleshooting
+FATAL: password authentication failed
+Your DATABASE_URL user/pass mismatch. Fix either the DB password or the URL.
 
-/ HTML test page with a sample response
+could not connect to server: Connection refused
+Postgres isn’t running or wrong port.
 
-Place images in a /docs/ folder and link them here.
+Model download is slow on first run
+First call downloads weights; cached afterwards.
 
-📎 Notes & Tips
-Model: distilbert-base-uncased-finetuned-sst-2-english (CPU-friendly)
-
-Container serves on port 7860 (EXPOSE 7860)
-
-For Windows PowerShell users, use backticks ( ` ) for multiline commands.
+GET /favicon.ico 404
+Harmless—add static/favicon.svg and link it in <head> if you want.
 
 📄 License
 MIT (or your preferred license)
-
